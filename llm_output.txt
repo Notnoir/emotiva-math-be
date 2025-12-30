@@ -1,0 +1,176 @@
+======================================================================
+LLM OUTPUT TEST
+======================================================================
+
+FULL EXPLANATION:
+----------------------------------------------------------------------
+Halo! 👋 Jangan khawatir kalau sekarang lagi bingung ya, itu wajar banget kok! Belajar hal baru memang kadang butuh waktu dan butuh dijelaskan dengan cara yang pas. Yuk, kita pelajari bareng-bareng tentang "Kubus" pelan-pelan. Aku akan bantu jelaskan sampai kamu paham dan nggak bingung lagi. Siap? 😉
+
+---
+
+### 1. **Pengenalan: Apa Itu Kubus?**
+
+Coba bayangkan benda-benda ini:
+*   **Dadu 🎲:** Pernah lihat dadu main ular tangga? Bentuknya pas banget seperti kotak, kan?
+*   **Rubik Kubus 🧩:** Mainan yang warnanya bisa diacak lalu disusun lagi itu lho.
+*   **Kotak Kado Kecil 🎁:** Kalau kamu dapat hadiah yang dikemas dalam kotak pas berbentuk kotak.
+
+Nah, benda-benda di atas itu adalah contoh dari **KUBUS**! ✨
+
+Kubus itu adalah salah satu jenis **bangun ruang**, artinya dia punya "isi" atau volume, bukan cuma gambar datar di kertas.
+
+### 2. **Definisi: Kubus Itu Kotak Sempurna!**
+
+Jadi, apa itu kubus? 🤔
+**Kubus adalah bangun ruang yang semua sisinya berbentuk persegi dan ukurannya sama persis.**
+
+Bayangkan sebuah kotak yang *benar-benar sempurna* kotak.
+Coba perhatikan gambar ini dalam pikiranmu:
+```
+       ___________
+      /          /|
+     /__________/ |  <- Sisi Atas (Persegi)
+     |          | |
+     |          | / <- Sisi Kanan (Persegi)
+     |__________|/  <- Sisi Depan (Persegi)
+```
+*   **Semua sisinya itu kotak (persegi)!** ✅
+*   **Dan semua kotak-kotak itu ukurannya SAMA PERSIS!** ✅
+
+Ini kunci utama dari kubus! Kalau ada satu sisi saja yang bukan persegi, atau ada persegi yang ukurannya beda, berarti itu bukan kubus. 😊
+
+### 3. **Komponen/Bagian-bagian Kubus: Mari Kita Bedah!**
+
+Kubus itu punya beberapa bagian penting yang harus kamu tahu. Anggap saja ini "kerangka" atau "struktur" dari si kubus.
+
+#### a. **Sisi (Wajah)**
+*   **Apa itu sisi?** Sisi itu permukaan datar yang membentuk kubus. Bayangkan dinding, lantai, dan atap sebuah ruangan berbentuk kubus. Itu semua adalah sisi! 🖼️
+*   **Ada berapa?** Coba kita hitung!
+    *   Depan (1)
+    *   Belakang (2)
+    *   Kiri (3)
+    *   Kanan (4)
+    *   Atas (5)
+    *   Bawah (6)
+    ➡️ Jadi, kubus punya **6️⃣ SISI**.
+*   **Bentuknya apa?** Ingat ya, semua sisinya berbentuk **persegi** dan ukurannya sama besar! Jadi ada 6 persegi yang sama persis. 👍
+
+#### b. **Rusuk (Tepi)**
+*   **Apa itu rusuk?** Rusuk itu adalah garis-garis lurus yang menjadi "kerangka" atau "tulang" kubus. Mereka adalah pertemuan antara dua sisi. Anggap saja itu seperti tiang-tiang atau bingkai dari sebuah kotak. 📏
+*   **Ada berapa?** Coba hitung garis-garis lurus pada dadu atau rubikmu.
+    *   Di bagian atas ada 4 garis.
+    *   Di bagian bawah ada 4 garis.
+    *   Dan ada 4 garis yang berdiri tegak menghubungkan atas dan bawah.
+    ➡️ Jadi, kubus punya **1️⃣2️⃣ RUSUK**.
+*   **Panjangnya gimana?** Ini penting banget! **Semua 12 rusuk pada kubus itu panjangnya SAMA PERSIS!** Kalau ada yang beda panjangnya, namanya bukan kubus lagi. Kita biasanya sebut panjang rusuk ini dengan simbol 's' atau 'r'. 😉
+
+#### c. **Titik Sudut (Pojok)**
+*   **Apa itu titik sudut?** Titik sudut itu adalah "pojok-pojok" dari kubus, tempat bertemunya tiga rusuk. Anggap saja itu seperti sudut ruangan di rumahmu. 📍
+*   **Ada berapa?** Coba hitung semua pojokan di dadu atau rubikmu.
+    *   Ada 4 di bagian atas.
+    *   Ada 4 di bagian bawah.
+    ➡️ Jadi, kubus punya **8️⃣ TITIK SUDUT**. ✨
+
+**Ringkasan Visual Cepat:**
+*   6️⃣ Sisi (seperti dinding)
+*   1️⃣2️⃣ Rusuk (seperti kerangka)
+*   8️⃣ Titik Sudut (seperti pojok)
+
+```
+        s <--- rusuk
+      / |
+     /  |
+   s ---s
+   |    |
+   |    |
+   s ---s  <--- sisi
+    \  /
+     s
+```
+*Gambarkan dalam pikiranmu, 's' itu panjang rusuknya ya!*
+
+### 4. **Rumus-rumus Kubus: Menghitung Isi dan Luasnya!**
+
+Sekarang kita mau hitung berapa "isi" kubus dan berapa "luas permukaannya". Jangan khawatir, rumusnya gampang kok!
+
+Kita akan pakai `s` untuk melambangkan **panjang rusuk** kubus, karena semua rusuknya sama panjang.
+
+#### a. **Volume Kubus (Isi Kubus)** 📦💦
+*   **Apa itu volume?** Volume itu seberapa banyak "isi" yang bisa muat di dalam kubus. Misalnya, berapa banyak air yang bisa ditampung di kotak kubus, atau berapa banyak pasir yang bisa mengisi kotak mainan berbentuk kubus.
+*   **Rumusnya:** Karena semua sisinya sama, kita tinggal kalikan saja panjang rusuknya sebanyak 3 kali!
+    `Volume = s × s × s`
+    Atau sering juga ditulis `Volume = s³` (dibaca 's pangkat tiga').
+*   **Visualisasinya:** Bayangkan kamu menyusun kubus-kubus kecil (kubus satuan) untuk mengisi kubus besar. Kamu butuh `s` kubus untuk panjangnya, `s` kubus untuk lebarnya, dan `s` kubus untuk tingginya. Jadinya `s × s × s` deh!
+
+#### b. **Luas Permukaan Kubus (Luas Kulit Luar)** 🎁
+*   **Apa itu luas permukaan?** Luas permukaan itu adalah total seluruh area "kulit luar" kubus. Bayangkan kalau kamu mau membungkus kado berbentuk kubus. Nah, berapa banyak kertas kado yang kamu butuhkan untuk menutupi seluruh permukaannya? Itu luas permukaan!
+*   **Rumusnya:** Tadi kita sudah tahu kalau kubus punya 6 sisi, dan semua sisinya berbentuk persegi yang ukurannya sama.
+    1.  **Cari dulu luas satu sisi persegi:** `Luas Persegi = s × s`
+    2.  **Karena ada 6 sisi yang sama:** Tinggal kalikan luas satu sisi itu dengan 6.
+    `Luas Permukaan = 6 × (s × s)`
+    Atau sering juga ditulis `Luas Permukaan = 6s²` (dibaca 'enam s kuadrat').
+*   **Visualisasinya:** Buka kotak kado kubusmu menjadi datar. Kamu akan melihat ada 6 lembar persegi yang saling menempel. Tinggal hitung luas ke-6 persegi itu. 🖼️🖼️🖼️🖼️🖼️🖼️
+
+### 5. **Contoh Perhitungan Sederhana**
+
+Supaya lebih kebayang, yuk kita coba satu contoh!
+
+Misalnya, kamu punya kotak mainan berbentuk kubus yang **panjang rusuknya (s) adalah 4 cm**.
+
+**Pertanyaan:**
+a. Berapa Volume kotak mainan itu?
+b. Berapa Luas Permukaan kotak mainan itu?
+
+**Jawab:**
+
+a. **Mencari Volume:**
+   *   Rumus Volume = s × s × s
+   *   Kita tahu s = 4 cm.
+   *   Volume = 4 cm × 4 cm × 4 cm
+   *   Volume = 16 cm² × 4 cm
+   *   **Volume = 64 cm³** (ingat ya, untuk volume satuannya kubik/pangkat tiga)
+   *   Visualisasinya: Kotak itu bisa diisi oleh 64 buah kubus kecil ukuran 1cm x 1cm x 1cm. 📦
+
+b. **Mencari Luas Permukaan:**
+   *   Rumus Luas Permukaan = 6 × (s × s)
+   *   Kita tahu s = 4 cm.
+   *   Luas satu sisi = s × s = 4 cm × 4 cm = 16 cm²
+   *   Luas Permukaan = 6 × 16 cm²
+   *   **Luas Permukaan = 96 cm²** (untuk luas satuannya persegi/pangkat dua)
+   *   Visualisasinya: Jika semua sisinya dibuka dan dibentangkan, total luasnya adalah 96 cm². 🖼️
+
+Gampang, kan? Cuma perkalian biasa! 👍
+
+### 6. **Tips Belajar Khusus untuk Kamu yang Suka Visual!**
+
+Karena kamu suka belajar dengan melihat dan membayangkan, ini ada beberapa tips yang bisa bantu kamu makin paham kubus:
+
+1.  **Pegang dan Amati Objek Nyata! 🎲📦**
+    *   Cari benda berbentuk kubus di sekitarmu (dadu, rubik, kotak). Pegang, putar-putar, hitung sendiri sisinya, rusuknya, titik sudutnya. Rasakan bentuknya! Ini akan sangat membantu otakmu memvisualisasikan kubus.
+2.  **Gambar dan Warnai Sendiri! 🎨✍️**
+    *   Ambil pensil warna dan kertas. Coba gambar kubus sendiri dari berbagai sudut. Warnai setiap sisinya dengan warna yang berbeda, atau tandai rusuk dan titik sudutnya dengan warna cerah. Proses menggambar ini akan memperkuat pemahaman visualmu.
+3.  **Buat Model Kubus Sederhana! ✂️📏🏠**
+    *   Kalau bisa, coba buat model kubus dari kertas karton, stik es krim, atau bahkan tusuk gigi dan permen kenyal (sebagai titik sudut). Dengan membangunnya sendiri, kamu akan lebih paham bagaimana semua bagiannya saling terhubung dan membentuk kubus. Ini cara paling jitu buat gaya belajar visual!
+
+### 7. **Motivasi Penutup**
+
+Gimana? Sudah mulai sedikit tercerahkan tentang kubus? 😊
+
+Ingat ya, nggak apa-apa kalau tadi bingung. Itu bagian dari proses belajar kok, dan menunjukkan kalau kamu sedang berusaha memahami hal baru! Yang penting kamu mau mencoba dan terus bertanya.
+
+Setiap langkah kecil yang kamu ambil hari ini, itu sudah kemajuan besar! Kamu sudah belajar hal baru dan itu keren banget! Kalau masih ada bagian yang belum jelas atau ada hal yang bikin kamu bingung lagi, jangan sungkan tanya ya. Aku siap bantu kamu sampai kamu benar-benar paham. Kamu pasti bisa! Semangat! 💪✨
+----------------------------------------------------------------------
+
+METADATA:
+Difficulty: pemula
+Topic: Kubus
+Learning Style: visual
+
+MOTIVATION:
+🤔 Tidak apa-apa merasa bingung! Itu tandanya otak sedang belajar. Mari kita coba pendekatan yang berbeda!
+
+======================================================================
+LLM STATUS:
+======================================================================
+✅ LLM IS ACTIVE!
+Content shows natural, conversational language.
