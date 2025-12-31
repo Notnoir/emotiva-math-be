@@ -4,7 +4,39 @@ Hybrid: Rule-based AI + LLM untuk personalisasi pembelajaran
 """
 from typing import Dict, List, Any
 import random
+import re
 from app.llm_service import llm_service
+
+
+def clean_markdown_formatting(text: str) -> str:
+    """
+    Remove markdown formatting characters from text
+    Removes: ###, ***, ---, **, *, etc.
+    """
+    if not text:
+        return text
+    
+    # Remove headers (###, ##, #)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    
+    # Remove horizontal rules (---, ***, ___)
+    text = re.sub(r'^[\-\*\_]{3,}\s*$', '', text, flags=re.MULTILINE)
+    
+    # Remove bold (** or __)
+    text = re.sub(r'\*\*([^\*]+)\*\*', r'\1', text)
+    text = re.sub(r'__([^_]+)__', r'\1', text)
+    
+    # Remove italic (* or _)
+    text = re.sub(r'\*([^\*]+)\*', r'\1', text)
+    text = re.sub(r'_([^_]+)_', r'\1', text)
+    
+    # Remove multiple blank lines (keep max 2)
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Trim whitespace
+    text = text.strip()
+    
+    return text
 
 
 class AdaptiveLearningEngine:
@@ -148,7 +180,8 @@ class AdaptiveLearningEngine:
                 user_query=user_query  # Pass user query for RAG
             )
             if llm_explanation:
-                return llm_explanation
+                # Clean markdown formatting from LLM output
+                return clean_markdown_formatting(llm_explanation)
         
         # Fallback to rule-based if LLM unavailable
         explanations = {

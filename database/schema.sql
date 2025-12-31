@@ -80,6 +80,65 @@ CREATE TABLE IF NOT EXISTS teacher_materials (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- =========================================
+-- Table: quiz_questions
+-- Menyimpan soal-soal latihan/quiz yang di-generate
+-- =========================================
+CREATE TABLE IF NOT EXISTS quiz_questions (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    topik ENUM('kubus', 'balok', 'bola', 'tabung', 'kerucut', 'limas', 'prisma') NOT NULL,
+    level ENUM('pemula', 'menengah', 'mahir') NOT NULL,
+    pertanyaan TEXT NOT NULL COMMENT 'Soal/pertanyaan',
+    pilihan_a VARCHAR(500),
+    pilihan_b VARCHAR(500),
+    pilihan_c VARCHAR(500),
+    pilihan_d VARCHAR(500),
+    jawaban_benar ENUM('A', 'B', 'C', 'D') NOT NULL,
+    penjelasan TEXT COMMENT 'Penjelasan jawaban',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_topik (topik),
+    INDEX idx_level (level)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =========================================
+-- Table: quiz_attempts
+-- Menyimpan percobaan quiz user
+-- =========================================
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    topik ENUM('kubus', 'balok', 'bola', 'tabung', 'kerucut', 'limas', 'prisma') NOT NULL,
+    level ENUM('pemula', 'menengah', 'mahir') NOT NULL,
+    total_soal INT NOT NULL,
+    benar INT DEFAULT 0,
+    salah INT DEFAULT 0,
+    skor DECIMAL(5,2) NOT NULL COMMENT 'Persentase 0-100',
+    durasi INT DEFAULT 0 COMMENT 'Durasi dalam detik',
+    completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    INDEX idx_user_id (user_id),
+    INDEX idx_topik (topik),
+    INDEX idx_skor (skor),
+    INDEX idx_completed_at (completed_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =========================================
+-- Table: quiz_answers
+-- Menyimpan jawaban user per soal
+-- =========================================
+CREATE TABLE IF NOT EXISTS quiz_answers (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    attempt_id INT NOT NULL,
+    question_id INT NOT NULL,
+    jawaban_user ENUM('A', 'B', 'C', 'D') NOT NULL,
+    is_correct BOOLEAN NOT NULL,
+    waktu_jawab TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (attempt_id) REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+    FOREIGN KEY (question_id) REFERENCES quiz_questions(id) ON DELETE CASCADE,
+    INDEX idx_attempt_id (attempt_id),
+    INDEX idx_question_id (question_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- =========================================
 -- Sample Data (Optional)
 -- =========================================
 

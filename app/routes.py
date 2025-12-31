@@ -1,6 +1,6 @@
 from flask import Blueprint, jsonify, request
 from datetime import datetime
-from app.models import db, User, Emotion, LearningLog, TeacherMaterial
+from app.models import db, User, Emotion, LearningLog, TeacherMaterial, QuizQuestion, QuizAttempt, QuizAnswer
 from app.ai_engine import adaptive_engine
 from app.llm_service import llm_service
 
@@ -32,7 +32,16 @@ def health_check():
             'materials_search': '/api/materials/search?q=keyword [GET]',
             'adaptive_content': '/api/adaptive/content [POST]',
             'recommendations': '/api/recommendations/<user_id> [GET]',
-            'visualization': '/api/visualization/generate [POST]'
+            'visualization': '/api/visualization/generate [POST]',
+            'quiz_generate': '/api/quiz/generate [POST]',
+            'quiz_submit': '/api/quiz/submit [POST]',
+            'quiz_history': '/api/quiz/history/<user_id> [GET]',
+            'quiz_stats': '/api/quiz/stats/<user_id> [GET]',
+            'dashboard_overview': '/api/dashboard/overview [GET]',
+            'dashboard_students': '/api/dashboard/students [GET]',
+            'dashboard_topics': '/api/dashboard/topics [GET]',
+            'dashboard_emotions': '/api/dashboard/emotions [GET]',
+            'dashboard_performance': '/api/dashboard/performance [GET]'
         }
     }), 200
 
@@ -913,7 +922,749 @@ def _generate_fallback_visualization(topic: str) -> dict:
     
     return base_visualizations.get(topic, base_visualizations['kubus'])
 
-# ==================== ERROR HANDLERS ====================
+# ==================== QUIZ ENDPOINTS ====================
+
+@api_bp.route('/quiz/generate', methods=['POST'])
+def generate_quiz():
+    """
+    Generate quiz questions for a topic
+    POST /api/quiz/generate
+    Body: {"topik": "kubus", "level": "pemula", "num_questions": 5}
+    """
+    try:
+        data = request.get_json()
+        topik = data.get('topik', 'kubus')
+        level = data.get('level', 'pemula')
+        num_questions = data.get('num_questions', 5)
+        
+        # Validate input
+        valid_topics = ['kubus', 'balok', 'bola', 'tabung', 'kerucut', 'limas', 'prisma']
+        valid_levels = ['pemula', 'menengah', 'mahir']
+        
+        if topik not in valid_topics:
+            return jsonify({
+                'status': 'error',
+                'message': f'Invalid topic. Must be one of: {", ".join(valid_topics)}'
+            }), 400
+        
+        if level not in valid_levels:
+            return jsonify({
+                'status': 'error',
+                'message': f'Invalid level. Must be one of: {", ".join(valid_levels)}'
+            }), 400
+        
+        if not isinstance(num_questions, int) or num_questions < 1 or num_questions > 10:
+            return jsonify({
+                'status': 'error',
+                'message': 'num_questions must be between 1 and 10'
+            }), 400
+        
+        # Generate questions using LLM
+        questions = llm_service.generate_quiz_questions(topik, level, num_questions)
+        
+        if not questions:
+            return jsonify({
+                'status': 'error',
+                'message': 'Failed to generate questions. Please check teacher materials exist for this topic.'
+            }), 500
+        
+        # Save questions to database
+        saved_questions = []
+        for q_data in questions:
+            question = QuizQuestion(
+                topik=topik,
+                level=level,
+                pertanyaan=q_data['pertanyaan'],
+                pilihan_a=q_data['pilihan_a'],
+                pilihan_b=q_data['pilihan_b'],
+                pilihan_c=q_data['pilihan_c'],
+                pilihan_d=q_data['pilihan_d'],
+                jawaban_benar=q_data['jawaban_benar'],
+                penjelasan=q_data['penjelasan']
+            )
+            db.session.add(question)
+            db.session.flush()  # Get ID before commit
+            saved_questions.append(question.to_dict_without_answer())
+        
+        db.session.commit()
+        
+        return jsonify({
+            'status': 'success',
+            'message': f'Generated {len(saved_questions)} questions',
+            'data': {
+                'topik': topik,
+                'level': level,
+                'questions': saved_questions
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Quiz generation failed: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/quiz/submit', methods=['POST'])
+def submit_quiz():
+    """
+    Submit quiz answers and get score
+    POST /api/quiz/submit
+    Body: {
+        "user_id": 1,
+        "topik": "kubus",
+        "level": "pemula",
+        "answers": [
+            {"question_id": 1, "jawaban": "A"},
+            {"question_id": 2, "jawaban": "B"}
+        ],
+        "durasi": 120
+    }
+    """
+    try:
+        data = request.get_json()
+        user_id = data.get('user_id')
+        topik = data.get('topik')
+        level = data.get('level')
+        answers = data.get('answers', [])
+        durasi = data.get('durasi', 0)
+        
+        # Validate user exists
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({
+                'status': 'error',
+                'message': f'User {user_id} not found'
+            }), 404
+        
+        if not answers:
+            return jsonify({
+                'status': 'error',
+                'message': 'No answers provided'
+            }), 400
+        
+        # Grade answers
+        total_soal = len(answers)
+        benar = 0
+        salah = 0
+        graded_answers = []
+        
+        for ans in answers:
+            question_id = ans.get('question_id')
+            jawaban_user = ans.get('jawaban', '').upper()
+            
+            # Get correct answer
+            question = QuizQuestion.query.get(question_id)
+            if not question:
+                continue
+            
+            is_correct = (jawaban_user == question.jawaban_benar)
+            if is_correct:
+                benar += 1
+            else:
+                salah += 1
+            
+            graded_answers.append({
+                'question_id': question_id,
+                'jawaban_user': jawaban_user,
+                'jawaban_benar': question.jawaban_benar,
+                'is_correct': is_correct,
+                'pertanyaan': question.pertanyaan,
+                'penjelasan': question.penjelasan
+            })
+        
+        # Calculate score
+        skor = (benar / total_soal * 100) if total_soal > 0 else 0
+        
+        # Save attempt
+        attempt = QuizAttempt(
+            user_id=user_id,
+            topik=topik,
+            level=level,
+            total_soal=total_soal,
+            benar=benar,
+            salah=salah,
+            skor=skor,
+            durasi=durasi
+        )
+        db.session.add(attempt)
+        db.session.flush()
+        
+        # Save individual answers
+        for ans in graded_answers:
+            quiz_answer = QuizAnswer(
+                attempt_id=attempt.id,
+                question_id=ans['question_id'],
+                jawaban_user=ans['jawaban_user'],
+                is_correct=ans['is_correct']
+            )
+            db.session.add(quiz_answer)
+        
+        db.session.commit()
+        
+        # Log learning activity
+        learning_log = LearningLog(
+            user_id=user_id,
+            materi=f'Quiz {topik}',
+            tipe_aktivitas='quiz',
+            skor=int(skor),
+            durasi=durasi
+        )
+        db.session.add(learning_log)
+        db.session.commit()
+        
+        # Provide feedback based on score
+        if skor >= 80:
+            feedback = "Luar biasa! Pemahaman Anda sangat baik! 🎉"
+            next_step = "Coba tingkatkan ke level berikutnya!"
+        elif skor >= 60:
+            feedback = "Bagus! Anda sudah memahami konsep dasar. 👍"
+            next_step = "Coba pelajari lagi bagian yang masih kurang."
+        else:
+            feedback = "Tetap semangat! Pelajari materi lagi ya. 💪"
+            next_step = "Review materi dan coba latihan lagi."
+        
+        return jsonify({
+            'status': 'success',
+            'message': 'Quiz submitted successfully',
+            'data': {
+                'attempt_id': attempt.id,
+                'total_soal': total_soal,
+                'benar': benar,
+                'salah': salah,
+                'skor': round(skor, 2),
+                'durasi': durasi,
+                'feedback': feedback,
+                'next_step': next_step,
+                'answers': graded_answers
+            }
+        }), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'status': 'error',
+            'message': f'Quiz submission failed: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/quiz/history/<int:user_id>', methods=['GET'])
+def get_quiz_history(user_id):
+    """
+    Get quiz history for a user
+    GET /api/quiz/history/<user_id>
+    Query params: ?topik=kubus&limit=10
+    """
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({
+                'status': 'error',
+                'message': f'User {user_id} not found'
+            }), 404
+        
+        # Get query parameters
+        topik = request.args.get('topik')
+        limit = request.args.get('limit', 10, type=int)
+        
+        # Build query
+        query = QuizAttempt.query.filter_by(user_id=user_id)
+        
+        if topik:
+            query = query.filter_by(topik=topik)
+        
+        # Get attempts ordered by date
+        attempts = query.order_by(QuizAttempt.completed_at.desc()).limit(limit).all()
+        
+        # Calculate stats
+        if attempts:
+            avg_skor = sum(a.skor for a in attempts) / len(attempts)
+            best_skor = max(a.skor for a in attempts)
+            total_attempts = len(attempts)
+        else:
+            avg_skor = 0
+            best_skor = 0
+            total_attempts = 0
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'user_id': user_id,
+                'total_attempts': total_attempts,
+                'avg_skor': round(avg_skor, 2),
+                'best_skor': round(best_skor, 2),
+                'attempts': [a.to_dict() for a in attempts]
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get quiz history: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/quiz/stats/<int:user_id>', methods=['GET'])
+def get_quiz_stats(user_id):
+    """
+    Get detailed quiz statistics for a user
+    GET /api/quiz/stats/<user_id>
+    """
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({
+                'status': 'error',
+                'message': f'User {user_id} not found'
+            }), 404
+        
+        # Get all attempts
+        attempts = QuizAttempt.query.filter_by(user_id=user_id).all()
+        
+        if not attempts:
+            return jsonify({
+                'status': 'success',
+                'data': {
+                    'user_id': user_id,
+                    'total_attempts': 0,
+                    'stats_by_topic': {},
+                    'stats_by_level': {},
+                    'overall': {
+                        'avg_skor': 0,
+                        'best_skor': 0,
+                        'total_questions': 0,
+                        'total_correct': 0
+                    }
+                }
+            }), 200
+        
+        # Stats by topic
+        stats_by_topic = {}
+        stats_by_level = {}
+        total_correct = 0
+        total_questions = 0
+        
+        for attempt in attempts:
+            # By topic
+            if attempt.topik not in stats_by_topic:
+                stats_by_topic[attempt.topik] = {
+                    'attempts': 0,
+                    'avg_skor': 0,
+                    'best_skor': 0,
+                    'scores': []
+                }
+            stats_by_topic[attempt.topik]['attempts'] += 1
+            stats_by_topic[attempt.topik]['scores'].append(attempt.skor)
+            
+            # By level
+            if attempt.level not in stats_by_level:
+                stats_by_level[attempt.level] = {
+                    'attempts': 0,
+                    'avg_skor': 0,
+                    'best_skor': 0,
+                    'scores': []
+                }
+            stats_by_level[attempt.level]['attempts'] += 1
+            stats_by_level[attempt.level]['scores'].append(attempt.skor)
+            
+            # Overall
+            total_correct += attempt.benar
+            total_questions += attempt.total_soal
+        
+        # Calculate averages
+        for topic in stats_by_topic:
+            scores = stats_by_topic[topic]['scores']
+            stats_by_topic[topic]['avg_skor'] = round(sum(scores) / len(scores), 2)
+            stats_by_topic[topic]['best_skor'] = round(max(scores), 2)
+            del stats_by_topic[topic]['scores']
+        
+        for level in stats_by_level:
+            scores = stats_by_level[level]['scores']
+            stats_by_level[level]['avg_skor'] = round(sum(scores) / len(scores), 2)
+            stats_by_level[level]['best_skor'] = round(max(scores), 2)
+            del stats_by_level[level]['scores']
+        
+        all_scores = [a.skor for a in attempts]
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'user_id': user_id,
+                'total_attempts': len(attempts),
+                'stats_by_topic': stats_by_topic,
+                'stats_by_level': stats_by_level,
+                'overall': {
+                    'avg_skor': round(sum(all_scores) / len(all_scores), 2),
+                    'best_skor': round(max(all_scores), 2),
+                    'total_questions': total_questions,
+                    'total_correct': total_correct,
+                    'accuracy': round((total_correct / total_questions * 100), 2) if total_questions > 0 else 0
+                }
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get quiz stats: {str(e)}'
+        }), 500
+
+
+# ==================== ERROR HANDLERS ====================# ==================== TEACHER DASHBOARD ANALYTICS ====================
+
+@api_bp.route('/dashboard/overview', methods=['GET'])
+def get_dashboard_overview():
+    """
+    Get overview statistics for teacher dashboard
+    GET /api/dashboard/overview
+    """
+    try:
+        # Total users
+        total_users = User.query.count()
+        
+        # Total materials
+        total_materials = TeacherMaterial.query.count()
+        
+        # Total quiz attempts
+        total_quizzes = QuizAttempt.query.count()
+        
+        # Total learning activities
+        total_activities = LearningLog.query.count()
+        
+        # Average quiz score
+        quiz_scores = db.session.query(QuizAttempt.skor).all()
+        avg_quiz_score = sum(s[0] for s in quiz_scores) / len(quiz_scores) if quiz_scores else 0
+        
+        # Recent activity (last 7 days)
+        from datetime import timedelta
+        week_ago = datetime.now() - timedelta(days=7)
+        recent_activities = LearningLog.query.filter(LearningLog.waktu >= week_ago).count()
+        recent_quizzes = QuizAttempt.query.filter(QuizAttempt.completed_at >= week_ago).count()
+        
+        # User distribution by level
+        level_distribution = db.session.query(
+            User.level, 
+            db.func.count(User.id)
+        ).group_by(User.level).all()
+        
+        level_stats = {level: count for level, count in level_distribution}
+        
+        # User distribution by learning style
+        style_distribution = db.session.query(
+            User.gaya_belajar,
+            db.func.count(User.id)
+        ).group_by(User.gaya_belajar).all()
+        
+        style_stats = {style: count for style, count in style_distribution}
+        
+        # Materials by topic
+        material_distribution = db.session.query(
+            TeacherMaterial.topik,
+            db.func.count(TeacherMaterial.id)
+        ).group_by(TeacherMaterial.topik).all()
+        
+        material_stats = {topik: count for topik, count in material_distribution}
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'overview': {
+                    'total_users': total_users,
+                    'total_materials': total_materials,
+                    'total_quizzes': total_quizzes,
+                    'total_activities': total_activities,
+                    'avg_quiz_score': round(avg_quiz_score, 2)
+                },
+                'recent_activity': {
+                    'last_7_days_activities': recent_activities,
+                    'last_7_days_quizzes': recent_quizzes
+                },
+                'distributions': {
+                    'by_level': level_stats,
+                    'by_learning_style': style_stats,
+                    'materials_by_topic': material_stats
+                }
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get dashboard overview: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/dashboard/students', methods=['GET'])
+def get_student_analytics():
+    """
+    Get detailed student analytics
+    GET /api/dashboard/students
+    Query params: ?limit=10&sort=score
+    """
+    try:
+        limit = request.args.get('limit', 20, type=int)
+        sort_by = request.args.get('sort', 'recent')  # recent, score, activity
+        
+        users = User.query.all()
+        student_data = []
+        
+        for user in users:
+            # Get quiz attempts
+            quiz_attempts = QuizAttempt.query.filter_by(user_id=user.id).all()
+            total_quizzes = len(quiz_attempts)
+            avg_score = sum(q.skor for q in quiz_attempts) / total_quizzes if total_quizzes > 0 else 0
+            
+            # Get learning activities
+            activities = LearningLog.query.filter_by(user_id=user.id).all()
+            total_activities = len(activities)
+            total_duration = sum(a.durasi for a in activities)
+            
+            # Get emotions
+            emotions = Emotion.query.filter_by(user_id=user.id).all()
+            emotion_counts = {}
+            for emotion in emotions:
+                emotion_counts[emotion.emosi] = emotion_counts.get(emotion.emosi, 0) + 1
+            
+            # Dominant emotion
+            dominant_emotion = max(emotion_counts.items(), key=lambda x: x[1])[0] if emotion_counts else 'netral'
+            
+            # Last activity
+            last_activity = activities[-1].waktu if activities else None
+            
+            student_data.append({
+                'id': user.id,
+                'nama': user.nama,
+                'level': user.level,
+                'gaya_belajar': user.gaya_belajar,
+                'total_quizzes': total_quizzes,
+                'avg_quiz_score': round(avg_score, 2),
+                'total_activities': total_activities,
+                'total_duration_minutes': round(total_duration / 60, 1),
+                'dominant_emotion': dominant_emotion,
+                'last_activity': last_activity.isoformat() if last_activity else None
+            })
+        
+        # Sort student data
+        if sort_by == 'score':
+            student_data.sort(key=lambda x: x['avg_quiz_score'], reverse=True)
+        elif sort_by == 'activity':
+            student_data.sort(key=lambda x: x['total_activities'], reverse=True)
+        else:  # recent
+            student_data.sort(key=lambda x: x['last_activity'] or '', reverse=True)
+        
+        # Apply limit
+        student_data = student_data[:limit]
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'students': student_data,
+                'total_students': len(users)
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get student analytics: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/dashboard/topics', methods=['GET'])
+def get_topic_analytics():
+    """
+    Get analytics per topic
+    GET /api/dashboard/topics
+    """
+    try:
+        topics = ['kubus', 'balok', 'bola', 'tabung', 'kerucut', 'limas', 'prisma']
+        topic_data = []
+        
+        for topik in topics:
+            # Materials count
+            materials_count = TeacherMaterial.query.filter_by(topik=topik).count()
+            
+            # Quiz attempts for this topic
+            quiz_attempts = QuizAttempt.query.filter_by(topik=topik).all()
+            total_attempts = len(quiz_attempts)
+            avg_score = sum(q.skor for q in quiz_attempts) / total_attempts if total_attempts > 0 else 0
+            
+            # Learning activities for this topic
+            activities = LearningLog.query.filter(LearningLog.materi.like(f'%{topik}%')).all()
+            total_activities = len(activities)
+            
+            # Completion rate (users who scored > 60)
+            passed = sum(1 for q in quiz_attempts if q.skor >= 60)
+            completion_rate = (passed / total_attempts * 100) if total_attempts > 0 else 0
+            
+            topic_data.append({
+                'topik': topik,
+                'materials_count': materials_count,
+                'total_attempts': total_attempts,
+                'avg_score': round(avg_score, 2),
+                'total_activities': total_activities,
+                'completion_rate': round(completion_rate, 2),
+                'students_passed': passed
+            })
+        
+        # Sort by popularity (most attempts)
+        topic_data.sort(key=lambda x: x['total_attempts'], reverse=True)
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'topics': topic_data
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get topic analytics: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/dashboard/emotions', methods=['GET'])
+def get_emotion_analytics():
+    """
+    Get emotion distribution and trends
+    GET /api/dashboard/emotions
+    Query params: ?days=7
+    """
+    try:
+        days = request.args.get('days', 7, type=int)
+        
+        # Get emotions from last N days
+        from datetime import timedelta
+        start_date = datetime.now() - timedelta(days=days)
+        emotions = Emotion.query.filter(Emotion.waktu >= start_date).all()
+        
+        # Overall distribution
+        emotion_counts = {}
+        for emotion in emotions:
+            emotion_counts[emotion.emosi] = emotion_counts.get(emotion.emosi, 0) + 1
+        
+        total_emotions = len(emotions)
+        emotion_distribution = {
+            emosi: {
+                'count': count,
+                'percentage': round((count / total_emotions * 100), 2) if total_emotions > 0 else 0
+            }
+            for emosi, count in emotion_counts.items()
+        }
+        
+        # Emotions by context (topic)
+        context_emotions = {}
+        for emotion in emotions:
+            if emotion.context:
+                if emotion.context not in context_emotions:
+                    context_emotions[emotion.context] = {}
+                context_emotions[emotion.context][emotion.emosi] = \
+                    context_emotions[emotion.context].get(emotion.emosi, 0) + 1
+        
+        # Daily trend (last N days)
+        daily_emotions = {}
+        for emotion in emotions:
+            date_key = emotion.waktu.date().isoformat()
+            if date_key not in daily_emotions:
+                daily_emotions[date_key] = {}
+            daily_emotions[date_key][emotion.emosi] = \
+                daily_emotions[date_key].get(emotion.emosi, 0) + 1
+        
+        # Sort daily emotions by date
+        sorted_daily = sorted(daily_emotions.items())
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'total_emotions': total_emotions,
+                'period_days': days,
+                'distribution': emotion_distribution,
+                'by_context': context_emotions,
+                'daily_trend': dict(sorted_daily)
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get emotion analytics: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/dashboard/performance', methods=['GET'])
+def get_performance_trends():
+    """
+    Get performance trends over time
+    GET /api/dashboard/performance
+    Query params: ?days=30&user_id=1
+    """
+    try:
+        days = request.args.get('days', 30, type=int)
+        user_id = request.args.get('user_id', type=int)
+        
+        from datetime import timedelta
+        start_date = datetime.now() - timedelta(days=days)
+        
+        # Build query
+        query = QuizAttempt.query.filter(QuizAttempt.completed_at >= start_date)
+        if user_id:
+            query = query.filter_by(user_id=user_id)
+        
+        attempts = query.order_by(QuizAttempt.completed_at).all()
+        
+        # Group by date
+        daily_performance = {}
+        for attempt in attempts:
+            date_key = attempt.completed_at.date().isoformat()
+            if date_key not in daily_performance:
+                daily_performance[date_key] = {
+                    'total_attempts': 0,
+                    'total_score': 0,
+                    'scores': []
+                }
+            daily_performance[date_key]['total_attempts'] += 1
+            daily_performance[date_key]['total_score'] += attempt.skor
+            daily_performance[date_key]['scores'].append(attempt.skor)
+        
+        # Calculate averages
+        performance_trend = []
+        for date, data in sorted(daily_performance.items()):
+            avg_score = data['total_score'] / data['total_attempts']
+            performance_trend.append({
+                'date': date,
+                'avg_score': round(avg_score, 2),
+                'attempts': data['total_attempts'],
+                'min_score': round(min(data['scores']), 2),
+                'max_score': round(max(data['scores']), 2)
+            })
+        
+        # Overall stats
+        all_scores = [a.skor for a in attempts]
+        overall_stats = {
+            'total_attempts': len(attempts),
+            'avg_score': round(sum(all_scores) / len(all_scores), 2) if all_scores else 0,
+            'min_score': round(min(all_scores), 2) if all_scores else 0,
+            'max_score': round(max(all_scores), 2) if all_scores else 0
+        }
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'period_days': days,
+                'user_id': user_id,
+                'overall': overall_stats,
+                'daily_trend': performance_trend
+            }
+        }), 200
+        
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get performance trends: {str(e)}'
+        }), 500
+
 
 # Error handlers
 @api_bp.errorhandler(404)

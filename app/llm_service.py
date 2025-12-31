@@ -472,6 +472,122 @@ OUTPUT (HANYA JSON VALID):
         except Exception as e:
             print(f"❌ Visualization generation error: {e}")
             return None
+    
+    def generate_quiz_questions(
+        self, 
+        topik: str, 
+        level: str = 'pemula',
+        num_questions: int = 5
+    ) -> Optional[list]:
+        """
+        Generate quiz questions using RAG context from teacher materials
+        
+        Args:
+            topik: Topic (kubus, balok, bola, etc.)
+            level: Difficulty level
+            num_questions: Number of questions to generate
+            
+        Returns:
+            List of question dictionaries with keys:
+            - pertanyaan: Question text
+            - pilihan_a, pilihan_b, pilihan_c, pilihan_d: Answer choices
+            - jawaban_benar: Correct answer (A, B, C, or D)
+            - penjelasan: Explanation of the correct answer
+        """
+        if not self.use_llm:
+            print("ℹ️ LLM disabled, cannot generate quiz")
+            return None
+        
+        # Retrieve context from RAG
+        context = rag_service.retrieve_context(topik, level)
+        
+        if not context or not context.get('materials'):
+            print(f"⚠️ No teacher materials found for {topik}/{level}")
+            return None
+        
+        prompt = f"""Kamu adalah guru matematika yang membuat soal latihan.
+
+KONTEKS MATERI DARI GURU:
+{context.get('formatted_context', '')}
+
+Buatlah {num_questions} soal pilihan ganda berkualitas tinggi untuk topik "{topik}" level "{level}".
+
+ATURAN PENTING:
+1. Soal HARUS berdasarkan materi guru di atas
+2. JANGAN membuat informasi baru di luar materi guru
+3. Setiap soal harus punya 4 pilihan jawaban (A, B, C, D)
+4. Hanya 1 jawaban yang benar
+5. Berikan penjelasan singkat untuk jawaban benar
+6. Variasi tingkat kesulitan dalam level yang sama
+7. Hindari soal yang terlalu mudah ditebak
+
+FORMAT OUTPUT (JSON ARRAY):
+[
+  {{
+    "pertanyaan": "Teks soal lengkap dengan angka jika ada",
+    "pilihan_a": "Pilihan A",
+    "pilihan_b": "Pilihan B",
+    "pilihan_c": "Pilihan C",
+    "pilihan_d": "Pilihan D",
+    "jawaban_benar": "A",
+    "penjelasan": "Penjelasan singkat mengapa A benar"
+  }}
+]
+
+OUTPUT (HANYA JSON ARRAY):
+"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            text = response.text.strip()
+            
+            # Clean markdown code blocks if present
+            if text.startswith('```'):
+                lines = text.split('\n')
+                # Remove first and last line (``` markers)
+                text = '\n'.join(lines[1:-1]) if len(lines) > 2 else text
+                # Remove json language identifier
+                text = text.replace('json', '', 1).strip()
+            
+            # Parse JSON
+            import json
+            questions = json.loads(text)
+            
+            # Validate structure
+            if not isinstance(questions, list):
+                print("⚠️ Invalid quiz JSON structure - not a list")
+                return None
+            
+            # Validate each question
+            required_keys = ['pertanyaan', 'pilihan_a', 'pilihan_b', 'pilihan_c', 
+                           'pilihan_d', 'jawaban_benar', 'penjelasan']
+            valid_questions = []
+            
+            for q in questions:
+                if all(key in q for key in required_keys):
+                    # Validate jawaban_benar is A, B, C, or D
+                    if q['jawaban_benar'].upper() in ['A', 'B', 'C', 'D']:
+                        q['jawaban_benar'] = q['jawaban_benar'].upper()
+                        valid_questions.append(q)
+                    else:
+                        print(f"⚠️ Invalid answer key: {q['jawaban_benar']}")
+                else:
+                    print(f"⚠️ Question missing required keys")
+            
+            if not valid_questions:
+                print("❌ No valid questions generated")
+                return None
+            
+            print(f"✅ Generated {len(valid_questions)} valid quiz questions")
+            return valid_questions
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ LLM returned invalid JSON: {e}")
+            print(f"Response text: {text[:200]}...")
+            return None
+        except Exception as e:
+            print(f"❌ Quiz generation error: {e}")
+            return None
 
 
 # Singleton instance
