@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify, request
-from datetime import datetime
+from datetime import datetime, timedelta
 from app.models import db, User, Emotion, LearningLog, TeacherMaterial, QuizQuestion, QuizAttempt, QuizAnswer
 from app.ai_engine import adaptive_engine
 from app.llm_service import llm_service
@@ -1253,11 +1253,44 @@ def get_quiz_stats(user_id):
         # Get all attempts
         attempts = QuizAttempt.query.filter_by(user_id=user_id).all()
         
+        # Get learning logs for streak calculation
+        learning_logs = LearningLog.query.filter_by(user_id=user_id).order_by(LearningLog.waktu.desc()).all()
+        
+        # Calculate learning streak
+        learning_streak = 0
+        if learning_logs:
+            today = datetime.now().date()
+            check_date = today
+            dates_with_activity = set([log.waktu.date() for log in learning_logs])
+            
+            # Check consecutive days backwards from today
+            while check_date in dates_with_activity:
+                learning_streak += 1
+                check_date = check_date - timedelta(days=1)
+        
+        # Get emotions for dominant emotion
+        emotions = Emotion.query.filter_by(user_id=user_id).order_by(Emotion.waktu.desc()).limit(10).all()
+        dominant_emotion = ""
+        if emotions:
+            emotion_counts = {}
+            for emotion in emotions:
+                emotion_counts[emotion.emosi] = emotion_counts.get(emotion.emosi, 0) + 1
+            dominant_emotion = max(emotion_counts, key=emotion_counts.get)
+        
         if not attempts:
             return jsonify({
                 'status': 'success',
                 'data': {
                     'user_id': user_id,
+                    'stats': {
+                        'total_quizzes': 0,
+                        'avg_score': 0,
+                        'total_activities': len(learning_logs),
+                        'learning_streak': learning_streak,
+                        'dominant_emotion': dominant_emotion,
+                        'gaya_belajar': user.gaya_belajar,
+                        'level': user.level
+                    },
                     'total_attempts': 0,
                     'stats_by_topic': {},
                     'stats_by_level': {},
@@ -1265,7 +1298,8 @@ def get_quiz_stats(user_id):
                         'avg_skor': 0,
                         'best_skor': 0,
                         'total_questions': 0,
-                        'total_correct': 0
+                        'total_correct': 0,
+                        'accuracy': 0
                     }
                 }
             }), 200
@@ -1317,16 +1351,26 @@ def get_quiz_stats(user_id):
             del stats_by_level[level]['scores']
         
         all_scores = [a.skor for a in attempts]
+        avg_score = round(sum(all_scores) / len(all_scores), 2)
         
         return jsonify({
             'status': 'success',
             'data': {
                 'user_id': user_id,
+                'stats': {
+                    'total_quizzes': len(attempts),
+                    'avg_score': avg_score,
+                    'total_activities': len(learning_logs),
+                    'learning_streak': learning_streak,
+                    'dominant_emotion': dominant_emotion,
+                    'gaya_belajar': user.gaya_belajar,
+                    'level': user.level
+                },
                 'total_attempts': len(attempts),
                 'stats_by_topic': stats_by_topic,
                 'stats_by_level': stats_by_level,
                 'overall': {
-                    'avg_skor': round(sum(all_scores) / len(all_scores), 2),
+                    'avg_skor': avg_score,
                     'best_skor': round(max(all_scores), 2),
                     'total_questions': total_questions,
                     'total_correct': total_correct,
@@ -1336,6 +1380,9 @@ def get_quiz_stats(user_id):
         }), 200
         
     except Exception as e:
+        import traceback
+        print(f"❌ Error in get_quiz_stats: {str(e)}")
+        print(traceback.format_exc())
         return jsonify({
             'status': 'error',
             'message': f'Failed to get quiz stats: {str(e)}'
