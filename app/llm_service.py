@@ -499,16 +499,29 @@ OUTPUT (HANYA JSON VALID):
             return None
         
         # Retrieve context from RAG
-        context = rag_service.retrieve_context(topik, level)
+        contexts = rag_service.retrieve_context(
+            query=topik,
+            topik=topik,
+            level=level,
+            top_k=3
+        )
         
-        if not context or not context.get('materials'):
+        if not contexts:
             print(f"⚠️ No teacher materials found for {topik}/{level}")
             return None
+        
+        # Format contexts untuk prompt
+        formatted_context = "\n\n---\n\n".join([
+            f"MATERI: {ctx['metadata']['judul']}\n{ctx['text']}"
+            for ctx in contexts
+        ])
+        
+        print(f"✅ Retrieved {len(contexts)} context chunks for quiz generation")
         
         prompt = f"""Kamu adalah guru matematika yang membuat soal latihan.
 
 KONTEKS MATERI DARI GURU:
-{context.get('formatted_context', '')}
+{formatted_context}
 
 Buatlah {num_questions} soal pilihan ganda berkualitas tinggi untuk topik "{topik}" level "{level}".
 
