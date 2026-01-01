@@ -26,7 +26,10 @@ def create_app(config_name='default'):
     
     # Register blueprints
     from app.routes import api_bp
+    from app.auth_routes import auth_bp
+    
     app.register_blueprint(api_bp, url_prefix='/api')
+    app.register_blueprint(auth_bp)  # Auth already has /api/auth prefix
     
     # Health check route (tanpa prefix)
     @app.route('/')

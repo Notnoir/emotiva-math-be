@@ -15,10 +15,15 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nama = db.Column(db.String(100), nullable=False)
     
-    # Learning style: visual, auditori, kinestetik
-    gaya_belajar = db.Column(db.String(20), nullable=False)
+    # Authentication fields
+    email = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(db.String(20), nullable=False, default='student')  # 'teacher' or 'student'
     
-    # Current level: pemula, menengah, mahir
+    # Learning style: visual, auditori, kinestetik (only for students)
+    gaya_belajar = db.Column(db.String(20), nullable=True)
+    
+    # Current level: pemula, menengah, mahir (only for students)
     level = db.Column(db.String(20), default='pemula')
     
     # Timestamps
@@ -28,20 +33,25 @@ class User(db.Model):
     # Relationships
     emotions = db.relationship('Emotion', backref='user', lazy=True, cascade='all, delete-orphan')
     learning_logs = db.relationship('LearningLog', backref='user', lazy=True, cascade='all, delete-orphan')
+    quiz_attempts = db.relationship('QuizAttempt', backref='user', lazy=True, cascade='all, delete-orphan')
     
-    def to_dict(self):
+    def to_dict(self, include_email=False):
         """Convert model to dictionary"""
-        return {
+        data = {
             'id': self.id,
             'nama': self.nama,
+            'role': self.role,
             'gaya_belajar': self.gaya_belajar,
             'level': self.level,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
+        if include_email:
+            data['email'] = self.email
+        return data
     
     def __repr__(self):
-        return f'<User {self.nama} - {self.gaya_belajar}>'
+        return f'<User {self.nama} ({self.role}) - {self.email}>'
 
 
 class Emotion(db.Model):

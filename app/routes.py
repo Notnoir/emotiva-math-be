@@ -3,6 +3,7 @@ from datetime import datetime
 from app.models import db, User, Emotion, LearningLog, TeacherMaterial, QuizQuestion, QuizAttempt, QuizAnswer
 from app.ai_engine import adaptive_engine
 from app.llm_service import llm_service
+from app.auth_utils import token_required, role_required
 
 # Blueprint untuk API routes
 api_bp = Blueprint('api', __name__)
@@ -329,9 +330,10 @@ def test_endpoint():
 # ==================== ADAPTIVE LEARNING ENDPOINTS ====================
 
 @api_bp.route('/adaptive/content', methods=['POST'])
+@token_required
 def get_adaptive_content():
     """
-    POST /api/adaptive/content - Get adaptive learning content
+    POST /api/adaptive/content - Get adaptive learning content (Authenticated users)
     
     Body:
         {
@@ -407,10 +409,11 @@ def get_adaptive_content():
 # CRITICAL: Ini adalah sumber pengetahuan UTAMA sistem
 
 @api_bp.route('/materials', methods=['GET', 'POST'])
+@token_required
 def handle_materials():
     """
-    GET /api/materials - Get all materials atau filter berdasarkan topik/level
-    POST /api/materials - Upload materi baru (GURU ONLY)
+    GET /api/materials - Get all materials (authenticated users)
+    POST /api/materials - Upload materi baru (TEACHER ONLY)
     
     Query params untuk GET:
         - topik: string (opsional)
@@ -421,8 +424,7 @@ def handle_materials():
             "judul": string,
             "topik": string (kubus, balok, bola, tabung, kerucut, limas, prisma),
             "konten": string (materi lengkap),
-            "level": string (pemula, menengah, mahir),
-            "created_by": string (nama guru)
+            "level": string (pemula, menengah, mahir)
         }
     """
     if request.method == 'GET':
@@ -446,6 +448,13 @@ def handle_materials():
         }), 200
     
     elif request.method == 'POST':
+        # Only teachers can create materials
+        if request.user_role != 'teacher':
+            return jsonify({
+                'status': 'error',
+                'message': 'Akses ditolak. Hanya guru yang dapat mengunggah materi.'
+            }), 403
+        
         # Create new material
         data = request.get_json()
         
@@ -475,13 +484,18 @@ def handle_materials():
                 'message': f'Invalid level. Must be one of: {valid_levels}'
             }), 400
         
+        # Get teacher info from token
+        teacher = User.query.get(request.user_id)
+        created_by = teacher.nama if teacher else 'Unknown'
+        
         # Create material
         material = TeacherMaterial(
             judul=data['judul'],
             topik=data['topik'].lower(),
             konten=data['konten'],
             level=level,
-            created_by=data.get('created_by', 'Admin')
+            created_by=created_by,
+            teacher_id=request.user_id
         )
         
         db.session.add(material)
@@ -494,11 +508,12 @@ def handle_materials():
         }), 201
 
 @api_bp.route('/materials/<int:material_id>', methods=['GET', 'PUT', 'DELETE'])
+@token_required
 def handle_material_detail(material_id):
     """
-    GET /api/materials/<id> - Get specific material
-    PUT /api/materials/<id> - Update material (GURU ONLY)
-    DELETE /api/materials/<id> - Delete material (GURU ONLY)
+    GET /api/materials/<id> - Get specific material (authenticated users)
+    PUT /api/materials/<id> - Update material (TEACHER ONLY)
+    DELETE /api/materials/<id> - Delete material (TEACHER ONLY)
     """
     material = TeacherMaterial.query.get(material_id)
     
@@ -515,6 +530,13 @@ def handle_material_detail(material_id):
         }), 200
     
     elif request.method == 'PUT':
+        # Only teachers can update materials
+        if request.user_role != 'teacher':
+            return jsonify({
+                'status': 'error',
+                'message': 'Akses ditolak. Hanya guru yang dapat mengupdate materi.'
+            }), 403
+        
         data = request.get_json()
         
         # Update fields
@@ -530,8 +552,6 @@ def handle_material_detail(material_id):
             valid_levels = ['pemula', 'menengah', 'mahir']
             if data['level'].lower() in valid_levels:
                 material.level = data['level'].lower()
-        if 'created_by' in data:
-            material.created_by = data['created_by']
         
         material.updated_at = datetime.utcnow()
         db.session.commit()
@@ -543,6 +563,13 @@ def handle_material_detail(material_id):
         }), 200
     
     elif request.method == 'DELETE':
+        # Only teachers can delete materials
+        if request.user_role != 'teacher':
+            return jsonify({
+                'status': 'error',
+                'message': 'Akses ditolak. Hanya guru yang dapat menghapus materi.'
+            }), 403
+        
         db.session.delete(material)
         db.session.commit()
         
@@ -925,9 +952,10 @@ def _generate_fallback_visualization(topic: str) -> dict:
 # ==================== QUIZ ENDPOINTS ====================
 
 @api_bp.route('/quiz/generate', methods=['POST'])
+@token_required
 def generate_quiz():
     """
-    Generate quiz questions for a topic
+    Generate quiz questions for a topic (Authenticated users)
     POST /api/quiz/generate
     Body: {"topik": "kubus", "level": "pemula", "num_questions": 5}
     """
@@ -1007,9 +1035,10 @@ def generate_quiz():
 
 
 @api_bp.route('/quiz/submit', methods=['POST'])
+@token_required
 def submit_quiz():
     """
-    Submit quiz answers and get score
+    Submit quiz answers and get score (Authenticated users)
     POST /api/quiz/submit
     Body: {
         "user_id": 1,
@@ -1150,9 +1179,10 @@ def submit_quiz():
 
 
 @api_bp.route('/quiz/history/<int:user_id>', methods=['GET'])
+@token_required
 def get_quiz_history(user_id):
     """
-    Get quiz history for a user
+    Get quiz history for a user (Authenticated users)
     GET /api/quiz/history/<user_id>
     Query params: ?topik=kubus&limit=10
     """
@@ -1206,9 +1236,10 @@ def get_quiz_history(user_id):
 
 
 @api_bp.route('/quiz/stats/<int:user_id>', methods=['GET'])
+@token_required
 def get_quiz_stats(user_id):
     """
-    Get detailed quiz statistics for a user
+    Get detailed quiz statistics for a user (Authenticated users)
     GET /api/quiz/stats/<user_id>
     """
     try:
@@ -1314,9 +1345,10 @@ def get_quiz_stats(user_id):
 # ==================== ERROR HANDLERS ====================# ==================== TEACHER DASHBOARD ANALYTICS ====================
 
 @api_bp.route('/dashboard/overview', methods=['GET'])
+@role_required('teacher')
 def get_dashboard_overview():
     """
-    Get overview statistics for teacher dashboard
+    Get overview statistics for teacher dashboard (TEACHER ONLY)
     GET /api/dashboard/overview
     """
     try:
@@ -1396,9 +1428,10 @@ def get_dashboard_overview():
 
 
 @api_bp.route('/dashboard/students', methods=['GET'])
+@role_required('teacher')
 def get_student_analytics():
     """
-    Get detailed student analytics
+    Get detailed student analytics (TEACHER ONLY)
     GET /api/dashboard/students
     Query params: ?limit=10&sort=score
     """
@@ -1472,9 +1505,10 @@ def get_student_analytics():
 
 
 @api_bp.route('/dashboard/topics', methods=['GET'])
+@role_required('teacher')
 def get_topic_analytics():
     """
-    Get analytics per topic
+    Get analytics per topic (TEACHER ONLY)
     GET /api/dashboard/topics
     """
     try:
@@ -1526,9 +1560,10 @@ def get_topic_analytics():
 
 
 @api_bp.route('/dashboard/emotions', methods=['GET'])
+@role_required('teacher')
 def get_emotion_analytics():
     """
-    Get emotion distribution and trends
+    Get emotion distribution and trends (TEACHER ONLY)
     GET /api/dashboard/emotions
     Query params: ?days=7
     """
@@ -1594,9 +1629,10 @@ def get_emotion_analytics():
 
 
 @api_bp.route('/dashboard/performance', methods=['GET'])
+@role_required('teacher')
 def get_performance_trends():
     """
-    Get performance trends over time
+    Get performance trends over time (TEACHER ONLY)
     GET /api/dashboard/performance
     Query params: ?days=30&user_id=1
     """
