@@ -16,9 +16,6 @@ def create_app(config_name='default'):
     # Initialize database
     db.init_app(app)
     
-    # Enable CORS untuk semua routes
-    CORS(app, resources={r"/api/*": {"origins": "*"}})
-    
     # Create tables if not exist
     with app.app_context():
         db.create_all()
@@ -30,6 +27,20 @@ def create_app(config_name='default'):
     
     app.register_blueprint(api_bp, url_prefix='/api')
     app.register_blueprint(auth_bp)  # Auth already has /api/auth prefix
+    
+    # Enable CORS setelah blueprint registered - PENTING!
+    CORS(app, resources={
+        r"/*": {
+            "origins": "*",
+            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+            "allow_headers": ["Content-Type", "Authorization"],
+            "expose_headers": ["Content-Type", "Authorization"],
+            "supports_credentials": False,
+            "send_wildcard": False,
+            "always_send": True,
+            "max_age": 3600
+        }
+    })
     
     # Health check route (tanpa prefix)
     @app.route('/')
