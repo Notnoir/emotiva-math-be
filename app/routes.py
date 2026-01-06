@@ -696,6 +696,110 @@ def download_material(material_id):
             'message': f'Failed to download file: {str(e)}'
         }), 500
 
+@api_bp.route('/materials/topics', methods=['GET'])
+def get_available_topics():
+    """
+    GET /api/materials/topics - Get unique topics yang sudah ada materinya
+    
+    Returns:
+        List of topics dengan metadata
+    """
+    try:
+        # Get unique topics dari database
+        topics_query = db.session.query(
+            TeacherMaterial.topik,
+            db.func.count(TeacherMaterial.id).label('material_count')
+        ).group_by(TeacherMaterial.topik).all()
+        
+        # Mapping topik ke metadata
+        topic_metadata = {
+            'kubus': {
+                'title': 'Kubus',
+                'icon': 'check_box_outline_blank',
+                'description': 'Bangun ruang dengan 6 sisi berbentuk persegi',
+                'difficulty': 'Mudah',
+                'color': 'blue'
+            },
+            'balok': {
+                'title': 'Balok',
+                'icon': 'rectangle',
+                'description': 'Bangun ruang dengan 6 sisi berbentuk persegi panjang',
+                'difficulty': 'Mudah',
+                'color': 'orange'
+            },
+            'bola': {
+                'title': 'Bola',
+                'icon': 'circle',
+                'description': 'Bangun ruang berbentuk bulat sempurna',
+                'difficulty': 'Menengah',
+                'color': 'yellow'
+            },
+            'tabung': {
+                'title': 'Tabung',
+                'icon': 'circle',
+                'description': 'Bangun ruang dengan alas lingkaran',
+                'difficulty': 'Menengah',
+                'color': 'pink'
+            },
+            'kerucut': {
+                'title': 'Kerucut',
+                'icon': 'change_history',
+                'description': 'Bangun ruang dengan alas lingkaran dan satu titik puncak',
+                'difficulty': 'Menengah',
+                'color': 'green'
+            },
+            'limas': {
+                'title': 'Limas',
+                'icon': 'details',
+                'description': 'Bangun ruang dengan alas segi banyak dan titik puncak',
+                'difficulty': 'Mahir',
+                'color': 'purple'
+            },
+            'prisma': {
+                'title': 'Prisma',
+                'icon': 'category',
+                'description': 'Bangun ruang dengan alas dan tutup berbentuk segi banyak',
+                'difficulty': 'Mahir',
+                'color': 'red'
+            }
+        }
+        
+        # Build response dengan metadata
+        available_topics = []
+        for topik, count in topics_query:
+            metadata = topic_metadata.get(topik, {
+                'title': topik.capitalize(),
+                'icon': 'help',
+                'description': f'Materi pembelajaran {topik}',
+                'difficulty': 'Menengah',
+                'color': 'gray'
+            })
+            
+            available_topics.append({
+                'id': topik,
+                'title': metadata['title'],
+                'icon': metadata['icon'],
+                'description': metadata['description'],
+                'difficulty': metadata['difficulty'],
+                'color': metadata['color'],
+                'material_count': count
+            })
+        
+        return jsonify({
+            'status': 'success',
+            'count': len(available_topics),
+            'data': available_topics
+        }), 200
+        
+    except Exception as e:
+        print(f"❌ Error getting topics: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get topics: {str(e)}'
+        }), 500
+
 @api_bp.route('/materials/search', methods=['GET'])
 def search_materials():
     """
