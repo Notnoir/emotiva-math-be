@@ -141,8 +141,17 @@ class TeacherMaterial(db.Model):
     # Topik: kubus, balok, bola, tabung, kerucut, limas, prisma
     topik = db.Column(db.String(50), nullable=False)
     
-    # Konten lengkap materi dari guru
-    konten = db.Column(db.Text, nullable=False)
+    # Konten lengkap materi dari guru (untuk backward compatibility)
+    konten = db.Column(db.Text, nullable=True)
+    
+    # File path untuk file yang diupload (PDF, DOC, etc)
+    file_path = db.Column(db.String(500), nullable=True)
+    
+    # Original filename
+    file_name = db.Column(db.String(255), nullable=True)
+    
+    # File type/extension
+    file_type = db.Column(db.String(50), nullable=True)
     
     # Level: pemula, menengah, mahir
     level = db.Column(db.String(20), default='pemula')
@@ -161,6 +170,9 @@ class TeacherMaterial(db.Model):
             'judul': self.judul,
             'topik': self.topik,
             'konten': self.konten,
+            'file_path': self.file_path,
+            'file_name': self.file_name,
+            'file_type': self.file_type,
             'level': self.level,
             'created_by': self.created_by,
             'created_at': self.created_at.isoformat() if self.created_at else None,

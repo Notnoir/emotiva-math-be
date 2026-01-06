@@ -48,6 +48,31 @@ class LLMService:
             elif self.api_key == 'your_gemini_api_key_here':
                 print(f"   Reason: API key not set (placeholder)")
 
+    def _generate_no_material_message(self, topic: str, emotion: str = 'netral') -> str:
+        """
+        Generate message untuk kasih tahu siswa bahwa materi belum tersedia
+        """
+        emotion_msg = {
+            'bosan': "Wah maaf ya kamu bosan, tapi...",
+            'bingung': "Aku paham kamu bingung, tapi...",
+            'frustasi': "Aku ngerti kamu frustasi, tapi...",
+            'senang': "Semangat belajarnya keren! Tapi...",
+            'netral': "Halo! Tapi..."
+        }
+        
+        greeting = emotion_msg.get(emotion, "Halo! Tapi...")
+        
+        return f"""{greeting}
+
+📚 **Materi tentang "{topic}" belum tersedia**
+
+Maaf ya, saat ini belum ada materi pembelajaran dari guru untuk topik ini. 
+
+Silakan:
+- Hubungi guru kamu untuk mengupload materi terlebih dahulu
+- Atau coba topik matematika lainnya yang sudah ada materinya
+
+Terima kasih atas pengertiannya! 🙏"""
     
     def is_available(self) -> bool:
         """Check if LLM is available"""
@@ -89,9 +114,10 @@ class LLMService:
             top_k=3
         )
         
-        if not contexts:
-            print("   ⚠️ No teacher materials found! Using fallback.")
-            return None
+        if not contexts or all(c['score'] == 0 for c in contexts):
+            print("   ⚠️  No teacher materials found for this topic!")
+            # Return special message instead of None to indicate materials not available
+            return self._generate_no_material_message(topic, emotion)
         
         print(f"   ✅ Retrieved {len(contexts)} context chunks from teacher materials")
         

@@ -1,5 +1,7 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_from_directory
 from datetime import datetime, timedelta
+from werkzeug.utils import secure_filename
+import os
 from app.models import db, User, Emotion, LearningLog, TeacherMaterial, QuizQuestion, QuizAttempt, QuizAnswer
 from app.ai_engine import adaptive_engine
 from app.llm_service import llm_service
@@ -7,6 +9,14 @@ from app.auth_utils import token_required, role_required
 
 # Blueprint untuk API routes
 api_bp = Blueprint('api', __name__)
+
+# Configuration untuk file upload
+UPLOAD_FOLDER = 'uploads/materials'
+ALLOWED_EXTENSIONS = {'pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt'}
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 @api_bp.route('/health', methods=['GET'])
 def health_check():
@@ -412,20 +422,18 @@ def get_adaptive_content():
 def handle_materials():
     """
     GET /api/materials - Get all materials (publik)
-    POST /api/materials - Upload materi baru (TEACHER ONLY)
+    POST /api/materials - Upload materi baru (TEACHER ONLY) dengan file
     
     Query params untuk GET:
         - topik: string (opsional)
         - level: string (opsional)
     
-    Body untuk POST:
-        {
-            "judul": string,
-            "topik": string (kubus, balok, bola, tabung, kerucut, limas, prisma),
-            "konten": string (materi lengkap),
-            "level": string (pemula, menengah, mahir),
-            "created_by": string (nama guru)
-        }
+    Body untuk POST (multipart/form-data):
+        - judul: string
+        - topik: string (kubus, balok, bola, tabung, kerucut, limas, prisma)
+        - file: file (PDF, DOC, DOCX, PPT, PPTX, TXT)
+        - level: string (pemula, menengah, mahir)
+        - created_by: string (nama guru)
     """
     if request.method == 'GET':
         # Get materials dengan optional filtering
@@ -449,32 +457,52 @@ def handle_materials():
     
     elif request.method == 'POST':
         try:
-            # Create new material
-            data = request.get_json()
-            
             # Log untuk debugging
             print(f"📝 Received POST /api/materials request")
-            print(f"   Data: {data}")
             
             # Validation
-            required_fields = ['judul', 'topik', 'konten']
-            for field in required_fields:
-                if field not in data:
-                    return jsonify({
-                        'status': 'error',
-                        'message': f'Missing required field: {field}'
-                    }), 400
+            if 'file' not in request.files:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No file part in request'
+                }), 400
+            
+            file = request.files['file']
+            
+            if file.filename == '':
+                return jsonify({
+                    'status': 'error',
+                    'message': 'No file selected'
+                }), 400
+            
+            if not allowed_file(file.filename):
+                return jsonify({
+                    'status': 'error',
+                    'message': f'File type not allowed. Allowed types: {", ".join(ALLOWED_EXTENSIONS)}'
+                }), 400
+            
+            # Get form data
+            judul = request.form.get('judul')
+            topik = request.form.get('topik')
+            level = request.form.get('level', 'pemula').lower()
+            created_by = request.form.get('created_by', 'Guru')
+            
+            # Validate required fields
+            if not judul or not topik:
+                return jsonify({
+                    'status': 'error',
+                    'message': 'Missing required fields: judul, topik'
+                }), 400
             
             # Validate topik
             valid_topics = ['kubus', 'balok', 'bola', 'tabung', 'kerucut', 'limas', 'prisma']
-            if data['topik'].lower() not in valid_topics:
+            if topik.lower() not in valid_topics:
                 return jsonify({
                     'status': 'error',
                     'message': f'Invalid topik. Must be one of: {valid_topics}'
                 }), 400
             
-            # Validate level (if provided)
-            level = data.get('level', 'pemula').lower()
+            # Validate level
             valid_levels = ['pemula', 'menengah', 'mahir']
             if level not in valid_levels:
                 return jsonify({
@@ -482,14 +510,27 @@ def handle_materials():
                     'message': f'Invalid level. Must be one of: {valid_levels}'
                 }), 400
             
-            # Get teacher name from request or use default
-            created_by = data.get('created_by', 'Guru')
+            # Create upload directory if not exists
+            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
             
-            # Create material - HANYA gunakan field yang ada di model
+            # Save file with secure filename
+            filename = secure_filename(file.filename)
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            unique_filename = f"{timestamp}_{filename}"
+            file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+            
+            file.save(file_path)
+            
+            # Get file extension
+            file_type = filename.rsplit('.', 1)[1].lower()
+            
+            # Create material record
             material = TeacherMaterial(
-                judul=data['judul'],
-                topik=data['topik'].lower(),
-                konten=data['konten'],
+                judul=judul,
+                topik=topik.lower(),
+                file_path=file_path,
+                file_name=filename,
+                file_type=file_type,
                 level=level,
                 created_by=created_by
             )
@@ -585,7 +626,14 @@ def handle_material_detail(material_id):
         # Verify teacher role - untuk sekarang kita skip verifikasi token
         # TODO: Implement proper token verification
         
-        # Delete material
+        # Delete material and its file
+        if material.file_path and os.path.exists(material.file_path):
+            try:
+                os.remove(material.file_path)
+                print(f"✅ File deleted: {material.file_path}")
+            except Exception as e:
+                print(f"⚠️  Could not delete file: {e}")
+        
         db.session.delete(material)
         db.session.commit()
         
@@ -593,6 +641,60 @@ def handle_material_detail(material_id):
             'status': 'success',
             'message': 'Material deleted successfully'
         }), 200
+
+@api_bp.route('/materials/<int:material_id>/download', methods=['GET'])
+def download_material(material_id):
+    """
+    GET /api/materials/<id>/download - Download file materi
+    """
+    material = TeacherMaterial.query.get(material_id)
+    
+    if not material:
+        return jsonify({
+            'status': 'error',
+            'message': f'Material with id {material_id} not found'
+        }), 404
+    
+    if not material.file_path:
+        return jsonify({
+            'status': 'error',
+            'message': 'No file attached to this material'
+        }), 404
+    
+    try:
+        # Get absolute path
+        if os.path.isabs(material.file_path):
+            file_path = material.file_path
+        else:
+            # If relative path, make it absolute from app root
+            from flask import current_app
+            file_path = os.path.join(os.path.dirname(current_app.root_path), material.file_path)
+        
+        # Normalize path for Windows
+        file_path = os.path.normpath(file_path)
+        
+        if not os.path.exists(file_path):
+            return jsonify({
+                'status': 'error',
+                'message': f'File not found: {file_path}'
+            }), 404
+        
+        directory = os.path.dirname(file_path)
+        filename = os.path.basename(file_path)
+        
+        return send_from_directory(
+            directory, 
+            filename, 
+            as_attachment=True, 
+            download_name=material.file_name or filename
+        )
+    except Exception as e:
+        print(f"❌ Error downloading file: {str(e)}")
+        print(f"   File path: {material.file_path}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to download file: {str(e)}'
+        }), 500
 
 @api_bp.route('/materials/search', methods=['GET'])
 def search_materials():

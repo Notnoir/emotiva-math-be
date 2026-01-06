@@ -13,6 +13,7 @@ from app.models import TeacherMaterial, db
 import re
 from collections import Counter
 import math
+import os
 
 
 class RAGService:
@@ -44,19 +45,70 @@ class RAGService:
         # Build chunks
         self.chunks_cache = []
         for material in self.materials_cache:
-            chunks = self._chunk_text(
-                text=material.konten,
-                metadata={
-                    'material_id': material.id,
-                    'judul': material.judul,
-                    'topik': material.topik,
-                    'level': material.level,
-                    'created_by': material.created_by
-                }
-            )
-            self.chunks_cache.extend(chunks)
+            # Extract text content from material
+            text_content = self._extract_content(material)
+            
+            if text_content:
+                chunks = self._chunk_text(
+                    text=text_content,
+                    metadata={
+                        'material_id': material.id,
+                        'judul': material.judul,
+                        'topik': material.topik,
+                        'level': material.level,
+                        'created_by': material.created_by,
+                        'source': 'file' if material.file_path else 'text'
+                    }
+                )
+                self.chunks_cache.extend(chunks)
         
         print(f"✅ Loaded {len(self.materials_cache)} materials, {len(self.chunks_cache)} chunks")
+    
+    def _extract_content(self, material: TeacherMaterial) -> str:
+        """
+        Extract text content from material (file or konten field)
+        """
+        # If material has a file, try to extract content from it
+        if material.file_path and os.path.exists(material.file_path):
+            try:
+                file_type = material.file_type or ''
+                
+                # Extract text from TXT files
+                if file_type == 'txt':
+                    with open(material.file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    print(f"  ✅ Extracted text from {material.file_name} ({len(content)} chars)")
+                    return content
+                
+                # Extract text from PDF files
+                elif file_type == 'pdf':
+                    try:
+                        import PyPDF2
+                        with open(material.file_path, 'rb') as f:
+                            pdf_reader = PyPDF2.PdfReader(f)
+                            content = ''
+                            for page in pdf_reader.pages:
+                                content += page.extract_text() + '\n\n'
+                        print(f"  ✅ Extracted text from PDF {material.file_name} ({len(content)} chars)")
+                        return content
+                    except ImportError:
+                        print(f"  ⚠️  PyPDF2 not installed, cannot read PDF: {material.file_name}")
+                        return material.konten or ''
+                    except Exception as e:
+                        print(f"  ❌ Failed to extract PDF {material.file_name}: {e}")
+                        return material.konten or ''
+                
+                # For DOC/DOCX/PPT/PPTX, fall back to konten if available
+                else:
+                    print(f"  ⚠️  Cannot extract text from {file_type} file: {material.file_name}")
+                    return material.konten or ''
+                    
+            except Exception as e:
+                print(f"  ❌ Error reading file {material.file_path}: {e}")
+                return material.konten or ''
+        
+        # Fall back to konten field (for old text-based materials)
+        return material.konten or ''
     
     def _chunk_text(self, text: str, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         """

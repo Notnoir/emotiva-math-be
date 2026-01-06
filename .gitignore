@@ -145,3 +145,12 @@ data/
 *.csv
 *.xlsx
 *.json.gz
+
+# Uploaded materials (teacher files)
+uploads/
+uploads/materials/
+*.pdf
+*.doc
+*.docx
+*.ppt
+*.pptx
