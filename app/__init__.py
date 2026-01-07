@@ -2,6 +2,11 @@ from flask import Flask
 from flask_cors import CORS
 from app.config import config
 from app.models import db
+import sys
+
+# Fix Windows console encoding for emoji
+if sys.platform == 'win32':
+    sys.stdout.reconfigure(encoding='utf-8')
 
 def create_app(config_name='default'):
     """
@@ -19,7 +24,7 @@ def create_app(config_name='default'):
     # Create tables if not exist
     with app.app_context():
         db.create_all()
-        print("✅ Database tables created successfully")
+        print("[OK] Database tables created successfully")
     
     # Register blueprints
     from app.routes import api_bp

@@ -7,6 +7,7 @@ CRITICAL UPDATE: Sekarang menggunakan RAG (Retrieval-Augmented Generation)
 - Context di-retrieve dari teacher_materials via RAG service
 """
 import os
+import json
 import google.generativeai as genai
 from typing import Dict, Any, Optional
 from app.rag_service import rag_service
@@ -481,7 +482,6 @@ OUTPUT (HANYA JSON VALID):
                 text = '\n'.join(lines[1:-1])
             
             # Parse JSON
-            import json
             viz_json = json.loads(text)
             
             # Validate structure
@@ -589,7 +589,6 @@ OUTPUT (HANYA JSON ARRAY):
                 text = text.replace('json', '', 1).strip()
             
             # Parse JSON
-            import json
             questions = json.loads(text)
             
             # Validate structure
