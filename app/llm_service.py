@@ -35,7 +35,8 @@ class LLMService:
             try:
                 genai.configure(api_key=self.api_key)
                 # Using Gemini 1.5 Flash - faster and more efficient
-                self.model = genai.GenerativeModel('gemini-2.5-flash')
+                # self.model = genai.GenerativeModel('gemini-2.5-flash')
+                self.model = genai.GenerativeModel('gemma-3-4b-it')
                 print("✅ LLM (Google Gemini Flash 2.5) initialized successfully")
             except Exception as e:
                 print(f"⚠️ LLM initialization failed: {e}")
@@ -625,6 +626,152 @@ OUTPUT (HANYA JSON ARRAY):
             return None
         except Exception as e:
             print(f"❌ Quiz generation error: {e}")
+            return None
+
+    def generate_step_by_step_solution(
+        self,
+        topik: str,
+        problem: str,
+        level: str = 'pemula'
+    ) -> Optional[dict]:
+        """
+        Generate step-by-step solution for a math problem
+        
+        Args:
+            topik: Topic (kubus, balok, bola, etc.)
+            problem: Problem statement
+            level: Difficulty level
+            
+        Returns:
+            Dictionary with problem, steps array, and metadata
+        """
+        if not self.use_llm:
+            print("ℹ️ LLM disabled, cannot generate step-by-step solution")
+            return None
+        
+        # Retrieve context from RAG
+        contexts = rag_service.retrieve_context(
+            query=topik,
+            topik=topik,
+            level=level,
+            top_k=2
+        )
+        
+        if not contexts:
+            print(f"⚠️ No teacher materials found for {topik}/{level}")
+            return None
+        
+        # Format contexts untuk prompt
+        formatted_context = "\n\n---\n\n".join([
+            f"MATERI: {ctx['metadata']['judul']}\n{ctx['text']}"
+            for ctx in contexts
+        ])
+        
+        print(f"✅ Retrieved {len(contexts)} context chunks for step-by-step generation")
+        
+        prompt = f"""Kamu adalah guru matematika yang menjelaskan solusi soal secara bertahap.
+
+KONTEKS MATERI DARI GURU:
+{formatted_context}
+
+SOAL:
+{problem}
+
+TUGAS:
+Buatlah solusi step-by-step yang mudah dipahami untuk level "{level}".
+
+ATURAN PENTING:
+1. Solusi HARUS berdasarkan materi guru di atas
+2. Bagi solusi menjadi 3-6 langkah logis dan jelas
+3. Setiap step harus mudah dipahami siswa level {level}
+4. Gunakan bahasa Indonesia yang sederhana
+5. Sertakan perhitungan detail pada step yang memerlukan
+6. Berikan visual_hint untuk membantu visualisasi (optional)
+
+FORMAT OUTPUT (JSON):
+{{
+  "problem": "Teks soal lengkap",
+  "final_answer": "Jawaban akhir dengan satuan",
+  "steps": [
+    {{
+      "step_number": 1,
+      "title": "Judul singkat langkah ini",
+      "content": "Penjelasan detail langkah ini",
+      "formula": "Rumus yang digunakan (jika ada)",
+      "calculation": "Detail perhitungan (jika ada)",
+      "visual_hint": "highlight_sisi / show_formula / calculate (optional)",
+      "duration": 2000
+    }}
+  ],
+  "total_duration": 8000
+}}
+
+CONTOH visual_hint:
+- "highlight_sisi": highlight sisi pada 3D model
+- "show_formula": tampilkan formula
+- "calculate": tampilkan proses kalkulasi
+- "show_result": tampilkan hasil akhir
+
+OUTPUT (HANYA JSON):
+"""
+        
+        try:
+            response = self.model.generate_content(prompt)
+            text = response.text.strip()
+            
+            # Clean markdown code blocks if present
+            if text.startswith('```'):
+                lines = text.split('\n')
+                # Remove first and last line (``` markers)
+                text = '\n'.join(lines[1:-1]) if len(lines) > 2 else text
+                # Remove json language identifier
+                text = text.replace('json', '', 1).strip()
+            
+            # Parse JSON
+            solution = json.loads(text)
+            
+            # Validate structure
+            required_keys = ['problem', 'final_answer', 'steps']
+            if not all(key in solution for key in required_keys):
+                print("⚠️ Invalid solution JSON structure - missing required keys")
+                return None
+            
+            if not isinstance(solution['steps'], list) or len(solution['steps']) == 0:
+                print("⚠️ Invalid solution JSON structure - steps must be non-empty array")
+                return None
+            
+            # Validate each step
+            step_required_keys = ['step_number', 'title', 'content']
+            valid_steps = []
+            
+            for step in solution['steps']:
+                if all(key in step for key in step_required_keys):
+                    # Add default duration if not present
+                    if 'duration' not in step:
+                        step['duration'] = 2500
+                    valid_steps.append(step)
+                else:
+                    print(f"⚠️ Step missing required keys: {step}")
+            
+            if not valid_steps:
+                print("❌ No valid steps in solution")
+                return None
+            
+            solution['steps'] = valid_steps
+            
+            # Calculate total duration if not present
+            if 'total_duration' not in solution:
+                solution['total_duration'] = sum(s.get('duration', 2500) for s in valid_steps)
+            
+            print(f"✅ Generated step-by-step solution with {len(valid_steps)} steps")
+            return solution
+            
+        except json.JSONDecodeError as e:
+            print(f"❌ LLM returned invalid JSON: {e}")
+            print(f"Response text: {text[:200]}...")
+            return None
+        except Exception as e:
+            print(f"❌ Step-by-step generation error: {e}")
             return None
 
 

@@ -18,6 +18,88 @@ MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+def check_level_progression(user_id):
+    """
+    Check if user is eligible for level progression
+    
+    Criteria untuk naik level:
+    - Pemula -> Menengah: 
+        * Minimal 5 quiz selesai
+        * Rata-rata skor >= 75%
+        * Minimal 3 topik berbeda dipelajari
+    - Menengah -> Mahir:
+        * Minimal 10 quiz selesai
+        * Rata-rata skor >= 80%
+        * Minimal 5 topik berbeda dipelajari
+        * Durasi belajar total >= 3600 detik (1 jam)
+    
+    Returns:
+        tuple: (should_level_up, new_level, message)
+    """
+    user = User.query.get(user_id)
+    if not user:
+        return False, None, "User not found"
+    
+    current_level = user.level
+    
+    # Query statistics
+    quiz_attempts = QuizAttempt.query.filter_by(user_id=user_id).all()
+    total_quiz = len(quiz_attempts)
+    
+    if total_quiz == 0:
+        return False, None, "Belum ada quiz yang diselesaikan"
+    
+    # Calculate average score
+    avg_score = sum(attempt.skor for attempt in quiz_attempts) / total_quiz
+    
+    # Count unique topics learned
+    unique_topics = db.session.query(LearningLog.materi)\
+        .filter(LearningLog.user_id == user_id)\
+        .distinct()\
+        .count()
+    
+    # Total learning duration
+    total_durasi = db.session.query(db.func.sum(LearningLog.durasi))\
+        .filter(LearningLog.user_id == user_id)\
+        .scalar() or 0
+    
+    # Check level up from Pemula to Menengah
+    if current_level == 'pemula':
+        if total_quiz >= 5 and avg_score >= 75 and unique_topics >= 3:
+            return True, 'menengah', f"Selamat! 🎉 Kamu naik ke level Menengah dengan rata-rata skor {avg_score:.1f}%!"
+        else:
+            remaining = []
+            if total_quiz < 5:
+                remaining.append(f"{5-total_quiz} quiz lagi")
+            if avg_score < 75:
+                remaining.append(f"tingkatkan skor (saat ini {avg_score:.1f}%, target 75%)")
+            if unique_topics < 3:
+                remaining.append(f"{3-unique_topics} topik lagi")
+            return False, None, f"Terus belajar! Untuk naik ke Menengah: {', '.join(remaining)}"
+    
+    # Check level up from Menengah to Mahir
+    elif current_level == 'menengah':
+        if total_quiz >= 10 and avg_score >= 80 and unique_topics >= 5 and total_durasi >= 3600:
+            return True, 'mahir', f"Luar biasa! 🌟 Kamu naik ke level Mahir dengan rata-rata skor {avg_score:.1f}%!"
+        else:
+            remaining = []
+            if total_quiz < 10:
+                remaining.append(f"{10-total_quiz} quiz lagi")
+            if avg_score < 80:
+                remaining.append(f"tingkatkan skor (saat ini {avg_score:.1f}%, target 80%)")
+            if unique_topics < 5:
+                remaining.append(f"{5-unique_topics} topik lagi")
+            if total_durasi < 3600:
+                remaining_time = (3600 - total_durasi) // 60
+                remaining.append(f"{remaining_time} menit belajar lagi")
+            return False, None, f"Terus belajar! Untuk naik ke Mahir: {', '.join(remaining)}"
+    
+    # Already at max level
+    elif current_level == 'mahir':
+        return False, None, "Kamu sudah di level tertinggi! Pertahankan prestasi! 🏆"
+    
+    return False, None, "Level tidak valid"
+
 @api_bp.route('/health', methods=['GET'])
 def health_check():
     """
@@ -1171,6 +1253,202 @@ def _generate_fallback_visualization(topic: str) -> dict:
     
     return base_visualizations.get(topic, base_visualizations['kubus'])
 
+# ==================== STEP-BY-STEP SOLUTION ENDPOINTS ====================
+
+@api_bp.route('/materials/solution-steps', methods=['POST'])
+@token_required
+def get_solution_steps():
+    """
+    Generate step-by-step solution for a math problem
+    POST /api/materials/solution-steps
+    
+    Body:
+        {
+            "topic": "kubus",
+            "problem": "Sebuah kubus memiliki panjang sisi 5 cm. Hitunglah volumenya!",
+            "level": "pemula"  (optional)
+        }
+    
+    Returns:
+        {
+            "status": "success",
+            "data": {
+                "problem": "...",
+                "final_answer": "...",
+                "steps": [...],
+                "total_duration": 8000
+            }
+        }
+    """
+    try:
+        data = request.get_json()
+        
+        # Validation
+        if not data or 'topic' not in data or 'problem' not in data:
+            return jsonify({
+                'status': 'error',
+                'message': 'Missing required fields: topic and problem'
+            }), 400
+        
+        topic = data['topic'].lower()
+        problem = data['problem']
+        level = data.get('level', 'pemula')
+        
+        # Validate topic
+        valid_topics = ['kubus', 'balok', 'bola', 'tabung', 'kerucut', 'limas', 'prisma']
+        if topic not in valid_topics:
+            return jsonify({
+                'status': 'error',
+                'message': f'Invalid topic. Must be one of: {", ".join(valid_topics)}'
+            }), 400
+        
+        # Validate level
+        valid_levels = ['pemula', 'menengah', 'mahir']
+        if level not in valid_levels:
+            return jsonify({
+                'status': 'error',
+                'message': f'Invalid level. Must be one of: {", ".join(valid_levels)}'
+            }), 400
+        
+        # Generate step-by-step solution using LLM
+        solution = llm_service.generate_step_by_step_solution(
+            topik=topic,
+            problem=problem,
+            level=level
+        )
+        
+        if solution:
+            return jsonify({
+                'status': 'success',
+                'source': 'llm',
+                'data': solution
+            }), 200
+        else:
+            # Fallback: Generate basic solution
+            fallback_solution = _generate_fallback_solution(topic, problem)
+            return jsonify({
+                'status': 'success',
+                'source': 'fallback',
+                'data': fallback_solution
+            }), 200
+            
+    except Exception as e:
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to generate solution: {str(e)}'
+        }), 500
+
+def _generate_fallback_solution(topic: str, problem: str) -> dict:
+    """
+    Generate basic fallback solution when LLM is not available
+    """
+    # Simple template-based solutions
+    solutions = {
+        'kubus': {
+            'problem': problem,
+            'final_answer': 'Lihat langkah-langkah di bawah',
+            'steps': [
+                {
+                    'step_number': 1,
+                    'title': 'Identifikasi yang diketahui',
+                    'content': 'Tentukan panjang sisi kubus dari soal',
+                    'visual_hint': 'highlight_sisi',
+                    'duration': 2500
+                },
+                {
+                    'step_number': 2,
+                    'title': 'Gunakan rumus volume kubus',
+                    'content': 'Volume kubus = sisi × sisi × sisi = s³',
+                    'formula': 'V = s³',
+                    'visual_hint': 'show_formula',
+                    'duration': 2500
+                },
+                {
+                    'step_number': 3,
+                    'title': 'Substitusi nilai',
+                    'content': 'Masukkan nilai sisi ke dalam rumus',
+                    'visual_hint': 'calculate',
+                    'duration': 3000
+                },
+                {
+                    'step_number': 4,
+                    'title': 'Hitung hasil akhir',
+                    'content': 'Lakukan perhitungan untuk mendapatkan volume',
+                    'visual_hint': 'show_result',
+                    'duration': 2500
+                }
+            ],
+            'total_duration': 10500
+        },
+        'balok': {
+            'problem': problem,
+            'final_answer': 'Lihat langkah-langkah di bawah',
+            'steps': [
+                {
+                    'step_number': 1,
+                    'title': 'Identifikasi yang diketahui',
+                    'content': 'Tentukan panjang, lebar, dan tinggi balok',
+                    'duration': 2500
+                },
+                {
+                    'step_number': 2,
+                    'title': 'Gunakan rumus volume balok',
+                    'content': 'Volume balok = panjang × lebar × tinggi',
+                    'formula': 'V = p × l × t',
+                    'duration': 2500
+                },
+                {
+                    'step_number': 3,
+                    'title': 'Substitusi nilai',
+                    'content': 'Masukkan nilai p, l, dan t ke dalam rumus',
+                    'duration': 3000
+                },
+                {
+                    'step_number': 4,
+                    'title': 'Hitung hasil akhir',
+                    'content': 'Lakukan perhitungan untuk mendapatkan volume',
+                    'duration': 2500
+                }
+            ],
+            'total_duration': 10500
+        },
+        'bola': {
+            'problem': problem,
+            'final_answer': 'Lihat langkah-langkah di bawah',
+            'steps': [
+                {
+                    'step_number': 1,
+                    'title': 'Identifikasi jari-jari',
+                    'content': 'Tentukan jari-jari bola dari soal',
+                    'duration': 2500
+                },
+                {
+                    'step_number': 2,
+                    'title': 'Gunakan rumus volume bola',
+                    'content': 'Volume bola = (4/3) × π × r³',
+                    'formula': 'V = (4/3)πr³',
+                    'duration': 2500
+                },
+                {
+                    'step_number': 3,
+                    'title': 'Substitusi nilai',
+                    'content': 'Masukkan nilai r dan π (3.14 atau 22/7)',
+                    'duration': 3000
+                },
+                {
+                    'step_number': 4,
+                    'title': 'Hitung hasil akhir',
+                    'content': 'Lakukan perhitungan untuk mendapatkan volume',
+                    'duration': 2500
+                }
+            ],
+            'total_duration': 10500
+        }
+    }
+    
+    # Return topic-specific solution or default kubus
+    return solutions.get(topic, solutions['kubus'])
+
 # ==================== QUIZ ENDPOINTS ====================
 
 @api_bp.route('/quiz/generate', methods=['POST'])
@@ -1365,6 +1643,29 @@ def submit_quiz():
         db.session.add(learning_log)
         db.session.commit()
         
+        # Check for level progression after quiz
+        should_level_up, new_level, progression_message = check_level_progression(user_id)
+        
+        if should_level_up and new_level:
+            # Update user level
+            user.level = new_level
+            user.updated_at = datetime.utcnow()
+            db.session.commit()
+            
+            # Add level up info to response
+            level_up_data = {
+                'level_up': True,
+                'old_level': level,
+                'new_level': new_level,
+                'message': progression_message
+            }
+        else:
+            level_up_data = {
+                'level_up': False,
+                'current_level': user.level,
+                'message': progression_message
+            }
+        
         # Provide feedback based on score
         if skor >= 80:
             feedback = "Luar biasa! Pemahaman Anda sangat baik! 🎉"
@@ -1388,7 +1689,8 @@ def submit_quiz():
                 'durasi': durasi,
                 'feedback': feedback,
                 'next_step': next_step,
-                'answers': graded_answers
+                'answers': graded_answers,
+                'progression': level_up_data
             }
         }), 200
         
@@ -1608,6 +1910,109 @@ def get_quiz_stats(user_id):
         return jsonify({
             'status': 'error',
             'message': f'Failed to get quiz stats: {str(e)}'
+        }), 500
+
+
+@api_bp.route('/profile/<int:user_id>/progression', methods=['GET'])
+@token_required
+def get_level_progression(user_id):
+    """
+    Get level progression status for a user
+    GET /api/profile/<user_id>/progression
+    
+    Returns current level and requirements for next level
+    """
+    try:
+        user = User.query.get(user_id)
+        if not user:
+            return jsonify({
+                'status': 'error',
+                'message': f'User {user_id} not found'
+            }), 404
+        
+        # Get statistics
+        quiz_attempts = QuizAttempt.query.filter_by(user_id=user_id).all()
+        total_quiz = len(quiz_attempts)
+        avg_score = sum(attempt.skor for attempt in quiz_attempts) / total_quiz if total_quiz > 0 else 0
+        
+        unique_topics = db.session.query(LearningLog.materi)\
+            .filter(LearningLog.user_id == user_id)\
+            .distinct()\
+            .count()
+        
+        total_durasi = db.session.query(db.func.sum(LearningLog.durasi))\
+            .filter(LearningLog.user_id == user_id)\
+            .scalar() or 0
+        
+        current_level = user.level
+        
+        # Check progression
+        should_level_up, new_level, message = check_level_progression(user_id)
+        
+        # Define requirements
+        requirements = {
+            'pemula': {
+                'next_level': 'menengah',
+                'quiz_required': 5,
+                'score_required': 75,
+                'topics_required': 3,
+                'duration_required': 0
+            },
+            'menengah': {
+                'next_level': 'mahir',
+                'quiz_required': 10,
+                'score_required': 80,
+                'topics_required': 5,
+                'duration_required': 3600
+            },
+            'mahir': {
+                'next_level': None,
+                'message': 'Level maksimum tercapai! 🏆'
+            }
+        }
+        
+        current_requirements = requirements.get(current_level, {})
+        
+        # Calculate progress percentage
+        if current_level != 'mahir':
+            progress = {
+                'quiz': min(100, (total_quiz / current_requirements['quiz_required']) * 100),
+                'score': min(100, (avg_score / current_requirements['score_required']) * 100),
+                'topics': min(100, (unique_topics / current_requirements['topics_required']) * 100),
+                'duration': min(100, (total_durasi / current_requirements['duration_required']) * 100) if current_requirements['duration_required'] > 0 else 100
+            }
+            overall_progress = sum(progress.values()) / len(progress)
+        else:
+            progress = {'completed': 100}
+            overall_progress = 100
+        
+        return jsonify({
+            'status': 'success',
+            'data': {
+                'user_id': user_id,
+                'current_level': current_level,
+                'can_level_up': should_level_up,
+                'next_level': new_level if should_level_up else current_requirements.get('next_level'),
+                'message': message,
+                'current_stats': {
+                    'total_quiz': total_quiz,
+                    'avg_score': round(avg_score, 2),
+                    'unique_topics': unique_topics,
+                    'total_duration_minutes': round(total_durasi / 60, 2)
+                },
+                'requirements': current_requirements,
+                'progress': progress,
+                'overall_progress': round(overall_progress, 2)
+            }
+        }), 200
+        
+    except Exception as e:
+        import traceback
+        print(f"❌ Error in get_level_progression: {str(e)}")
+        print(traceback.format_exc())
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get progression: {str(e)}'
         }), 500
 
 
